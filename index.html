@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Картограф | Редактор карт</title>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f0f2f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+        }
+
+        .sidebar {
+            width: 320px;
+            background: white;
+            border-right: 1px solid #e9ecef;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            flex-shrink: 0;
+            box-shadow: 2px 0 12px rgba(0,0,0,0.02);
+        }
+
+        .map-area {
+            flex: 1;
+            background: #1a1a2e;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .map-viewport {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        .map-viewport:active {
+            cursor: grabbing;
+        }
+
+        .map-container {
+            position: relative;
+            display: inline-block;
+            transform-origin: center center;
+            transition: transform 0.05s ease-out;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            border-radius: 12px;
+        }
+
+        #mapImage {
+            display: block;
+            max-width: none;
+            width: auto;
+            height: auto;
+            border-radius: 12px;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .marks-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .marker {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            pointer-events: auto;
+            font-weight: 400;
+            transition: 0.05s linear;
+            user-select: none;
+            z-index: 100;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .marker:active {
+            cursor: grabbing;
+        }
+
+        .marker.selected {
+            text-shadow: 0 0 0 3px white, 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .marker-text {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            font-weight: 600;
+            white-space: nowrap;
+            background: rgba(0,0,0,0.75);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-family: monospace;
+            pointer-events: none;
+            letter-spacing: 0.3px;
+            backdrop-filter: blur(2px);
+        }
+
+        .sidebar-header {
+            padding: 24px 20px 16px;
+            border-bottom: 1px solid #eef2f6;
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 4px;
+        }
+
+        .sidebar-header p {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+
+        .section {
+            padding: 16px 20px;
+            border-bottom: 1px solid #eef2f6;
+        }
+
+        .section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 12px;
+        }
+
+        .icon-grid {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .icon-btn {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 28px;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .icon-btn:hover {
+            background: #eef2ff;
+        }
+
+        .icon-btn.active {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            transform: scale(1.02);
+        }
+
+        .input-group {
+            margin-bottom: 12px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #475569;
+            margin-bottom: 6px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            outline: none;
+            transition: 0.2s;
+        }
+
+        .input-group input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+        }
+
+        .size-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .size-control input {
+            flex: 1;
+            padding: 8px 12px;
+        }
+
+        .size-control span {
+            font-size: 0.85rem;
+            color: #64748b;
+            min-width: 45px;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-bottom: 8px;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+
+        .carousel-container {
+            margin-top: 8px;
+        }
+
+        .carousel-scroll {
+            overflow-x: auto;
+            white-space: nowrap;
+            display: flex;
+            gap: 10px;
+            padding-bottom: 8px;
+        }
+
+        .carousel-scroll::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .map-thumb {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            width: 80px;
+            background: #f8fafc;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: 0.2s;
+            overflow: hidden;
+        }
+
+        .map-thumb.active {
+            border-color: #3b82f6;
+            background: white;
+        }
+
+        .map-thumb img {
+            width: 80px;
+            height: 56px;
+            object-fit: cover;
+        }
+
+        .map-thumb span {
+            font-size: 0.65rem;
+            padding: 4px;
+            text-align: center;
+        }
+
+        .upload-label {
+            display: inline-block;
+            background: #f1f5f9;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            text-align: center;
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .info-text {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-align: center;
+            margin-top: 12px;
+            padding: 0 20px 20px;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 40px;
+            display: flex;
+            gap: 4px;
+            padding: 6px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+            z-index: 200;
+        }
+
+        .zoom-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .zoom-btn:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <div class="sidebar">
+        <div class="section">
+            <div class="section-title">Выбор карты</div>
+            <div class="carousel-container">
+                <div class="carousel-scroll" id="carouselList"></div>
+            </div>
+            <label class="upload-label" id="uploadLabel">
+                Загрузить свою карту
+                <input type="file" id="uploadInput" accept="image/*" style="display: none;">
+            </label>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Символ метки</div>
+            <div class="icon-grid" id="iconSelector">
+                <div class="icon-btn" data-icon="🔥">🔥</div>
+                <div class="icon-btn" data-icon="💥">💥</div>
+                <div class="icon-btn" data-icon="🌿">🌿</div>
+                <div class="icon-btn" data-icon="❌">❌</div>
+                <div class="icon-btn" data-icon="💡">💡</div>
+                <div class="icon-btn" data-icon="⚡">⚡</div>
+                <div class="icon-btn" data-icon="⚠️">⚠️</div>
+                <div class="icon-btn" data-icon="🚨">🚨</div>
+                <div class="icon-btn" data-icon="✅️">✅️</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Подпись</div>
+            <div class="input-group">
+                <input type="text" id="markerTextInput" placeholder="Текст подписи" value="">
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">📏 Размер метки</div>
+            <div class="size-control">
+                <input type="range" id="iconSizeSlider" min="20" max="200" value="144" step="2">
+                <span id="iconSizeValue">144px</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">📏 Размер текста</div>
+            <div class="size-control">
+                <input type="range" id="textSizeSlider" min="5" max="80" value="40" step="2">
+                <span id="textSizeValue">40px</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <button id="addMarkerBtn" class="btn-primary">Добавить метку в центр</button>
+            <button id="clearMarkersBtn" class="btn-secondary">Удалить все метки</button>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Экспорт</div>
+            <button id="copyBtn" class="btn-primary">Копировать в буфер</button>
+            <button id="downloadBtn" class="btn-primary" style="background:#10b981;">Скачать PNG</button>
+        </div>
+
+        <div class="info-text">
+            💡 Перетащите метку мышью<br>
+            🗑️ Выделите метку и нажмите Delete<br>
+            🖱️ Колесико мыши — масштаб карты<br>
+            📏 Ползунки меняют размер всех меток
+        </div>
+    </div>
+
+    <div class="map-area">
+        <div class="map-viewport" id="mapViewport">
+            <div class="map-container" id="mapContainer">
+                <img id="mapImage" alt="карта" style="display: block;">
+                <div class="marks-layer" id="marksLayer"></div>
+            </div>
+        </div>
+        <div class="zoom-controls">
+            <button class="zoom-btn" id="zoomInBtn">+</button>
+            <button class="zoom-btn" id="zoomOutBtn">−</button>
+            <button class="zoom-btn" id="resetZoomBtn">⟳</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let localMaps = [];
+    let customMaps = [];
+    let nextCustomId = 100;
+    let currentMapUrl = '';
+    let currentMapId = null;
+    let markers = [];
+    let nextMarkerId = 1;
+    let selectedMarkerId = null;
+    
+    let currentIcon = "🔥";
+    let currentText = "Точка";
+    
+    // Размеры меток
+    let currentIconSize = 144;
+    let currentTextSize = 40;
+    
+    let scale = 1;
+    let translateX = 0, translateY = 0;
+    let isPanning = false;
+    let panStartX = 0, panStartY = 0;
+    let panStartTranslateX = 0, panStartTranslateY = 0;
+    
+    const mapImage = document.getElementById('mapImage');
+    const marksLayer = document.getElementById('marksLayer');
+    const mapContainer = document.getElementById('mapContainer');
+    const viewport = document.getElementById('mapViewport');
+    const carouselList = document.getElementById('carouselList');
+    const uploadInput = document.getElementById('uploadInput');
+    const markerTextInput = document.getElementById('markerTextInput');
+    const addBtn = document.getElementById('addMarkerBtn');
+    const clearBtn = document.getElementById('clearMarkersBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const zoomIn = document.getElementById('zoomInBtn');
+    const zoomOut = document.getElementById('zoomOutBtn');
+    const resetZoom = document.getElementById('resetZoomBtn');
+    
+    // Элементы управления размером
+    const iconSizeSlider = document.getElementById('iconSizeSlider');
+    const iconSizeValue = document.getElementById('iconSizeValue');
+    const textSizeSlider = document.getElementById('textSizeSlider');
+    const textSizeValue = document.getElementById('textSizeValue');
+    
+    let dragTarget = null;
+    let dragStartX = 0, dragStartY = 0;
+    let markerStartX = 0, markerStartY = 0;
+    
+    function updateIconSizeDisplay() {
+        iconSizeValue.textContent = currentIconSize + 'px';
+        iconSizeSlider.value = currentIconSize;
+    }
+    
+    function updateTextSizeDisplay() {
+        textSizeValue.textContent = currentTextSize + 'px';
+        textSizeSlider.value = currentTextSize;
+    }
+    
+    iconSizeSlider.addEventListener('input', (e) => {
+        currentIconSize = parseInt(e.target.value);
+        updateIconSizeDisplay();
+        renderMarkers(); // Применяем ко всем меткам
+    });
+    
+    textSizeSlider.addEventListener('input', (e) => {
+        currentTextSize = parseInt(e.target.value);
+        updateTextSizeDisplay();
+        renderMarkers(); // Применяем ко всем меткам
+    });
+    
+    function fitMapToView() {
+        if (!mapImage.complete || mapImage.naturalWidth === 0) return;
+
+        const viewportRect = viewport.getBoundingClientRect();
+
+        const imgWidth = mapImage.naturalWidth;
+        const imgHeight = mapImage.naturalHeight;
+
+        // Масштаб чтобы ВСЯ картинка влезла в экран
+        const scaleX = (viewportRect.width - 40) / imgWidth;
+        const scaleY = (viewportRect.height - 40) / imgHeight;
+
+        scale = Math.min(scaleX, scaleY);
+
+        // Ограничения
+        scale = Math.max(0.05, Math.min(scale, 10));
+
+        // Центрируем
+        translateX = 0;
+        translateY = 0;
+
+        updateTransform();
+    }
+    
+    function scanLocalMaps() {
+        const possibleNames = [
+            'map_1.png', 'map1.png', 'map_1.jpg', 'map1.jpg',
+            'map_2.png', 'map2.png', 'map_2.jpg', 'map2.jpg',
+            'central.png', 'north.png', 'park.png', 'district.png',
+            'map.png', 'plan.png', 'schema.png'
+        ];
+        
+        const dynamicNames = [];
+        for (let i = 1; i <= 20; i++) {
+            dynamicNames.push(`map_${i}.png`, `map_${i}.jpg`, `map${i}.png`, `map${i}.jpg`);
+        }
+        const allNames = [...new Set([...possibleNames, ...dynamicNames])];
+        
+        localMaps = [];
+        const promises = allNames.map((name, idx) => {
+            return new Promise((resolve) => {
+                const url = `images/${name}`;
+                const img = new Image();
+                img.onload = () => {
+                    let displayName = name.replace(/\.(png|jpg|jpeg|webp)$/i, '').replace(/[_\-]/g, ' ');
+                    displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+                    localMaps.push({
+                        id: idx,
+                        name: displayName,
+                        url: url,
+                        thumb: url
+                    });
+                    resolve();
+                };
+                img.onerror = () => resolve();
+                img.src = url;
+            });
+        });
+        
+        Promise.all(promises).then(() => {
+            const unique = new Map();
+            localMaps.forEach(m => unique.set(m.url, m));
+            localMaps = Array.from(unique.values());
+            
+            buildCarousel();
+            if (localMaps.length > 0 && !currentMapUrl) {
+                setCurrentMap(localMaps[0].url, localMaps[0].id);
+            } else if (localMaps.length === 0) {
+                console.warn('Нет карт в папке images');
+            }
+        });
+    }
+    
+    function buildCarousel() {
+        const allMaps = [...localMaps, ...customMaps];
+        carouselList.innerHTML = '';
+        allMaps.forEach(map => {
+            const thumb = document.createElement('div');
+            thumb.className = 'map-thumb';
+            if (currentMapId === map.id) thumb.classList.add('active');
+            thumb.innerHTML = `
+                <img src="${map.thumb}" alt="${map.name}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2780%27 height=%2756%27%3E%3Crect width=%2780%27 height=%2756%27 fill=%27%23ddd%27/%3E%3Ctext x=%2740%27 y=%2730%27 text-anchor=%27middle%27 fill=%27%23999%27%3E?%3C/text%3E%3C/svg%3E'">
+                <span>${map.name.length > 12 ? map.name.slice(0,10)+'…' : map.name}</span>
+            `;
+            thumb.addEventListener('click', () => setCurrentMap(map.url, map.id));
+            carouselList.appendChild(thumb);
+        });
+    }
+    
+    function setCurrentMap(url, id) {
+        currentMapUrl = url;
+        currentMapId = id;
+        mapImage.src = url;
+        markers = [];
+        selectedMarkerId = null;
+        
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        renderMarkers();
+        updateActiveThumb();
+        
+        if (mapImage.complete) {
+            fitMapToView();
+        }
+    }
+    
+    function updateActiveThumb() {
+        document.querySelectorAll('.map-thumb').forEach((thumb, idx) => {
+            const allMaps = [...localMaps, ...customMaps];
+            const mapId = allMaps[idx]?.id;
+            if (mapId === currentMapId) thumb.classList.add('active');
+            else thumb.classList.remove('active');
+        });
+    }
+    
+    function renderMarkers() {
+        if (!marksLayer) return;
+        marksLayer.innerHTML = '';
+        markers.forEach(marker => {
+            const div = document.createElement('div');
+            div.className = 'marker';
+            if (selectedMarkerId === marker.id) div.classList.add('selected');
+            div.style.left = `${marker.x * 100}%`;
+            div.style.top = `${marker.y * 100}%`;
+            div.style.fontSize = currentIconSize + 'px';
+            div.innerHTML = marker.icon;
+            
+            const textSpan = document.createElement('div');
+            textSpan.className = 'marker-text';
+            textSpan.innerText = marker.text;
+            textSpan.style.fontSize = currentTextSize + 'px';
+            // Корректируем отступ снизу в зависимости от размера иконки и текста
+            const bottomOffset = Math.max(30, currentTextSize + 8);
+            textSpan.style.bottom = `-${bottomOffset}px`;
+            div.appendChild(textSpan);
+            
+            div.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                selectedMarkerId = marker.id;
+                renderMarkers();
+                dragTarget = marker;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                markerStartX = marker.x;
+                markerStartY = marker.y;
+                e.preventDefault();
+            });
+            
+            div.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectedMarkerId = marker.id;
+                renderMarkers();
+            });
+            
+            marksLayer.appendChild(div);
+        });
+    }
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!dragTarget) return;
+        const mapRect = mapImage.getBoundingClientRect();
+        if (mapRect.width === 0) return;
+        const deltaX = (e.clientX - dragStartX) / mapRect.width;
+        const deltaY = (e.clientY - dragStartY) / mapRect.height;
+        let newX = Math.min(0.97, Math.max(0.03, markerStartX + deltaX));
+        let newY = Math.min(0.97, Math.max(0.03, markerStartY + deltaY));
+        dragTarget.x = newX;
+        dragTarget.y = newY;
+        renderMarkers();
+    });
+    
+    document.addEventListener('mouseup', () => {
+        dragTarget = null;
+    });
+    
+    function addMarkerAtCenter() {
+        if (!mapImage.complete || mapImage.naturalWidth === 0) {
+            alert('Подождите загрузки карты');
+            return;
+        }
+        const newMarker = {
+            id: nextMarkerId++,
+            x: 0.5,
+            y: 0.5,
+            icon: currentIcon,
+            text: currentText.trim() || "метка"
+        };
+        markers.push(newMarker);
+        selectedMarkerId = newMarker.id;
+        renderMarkers();
+    }
+    
+    function deleteSelected() {
+        if (selectedMarkerId !== null) {
+            markers = markers.filter(m => m.id !== selectedMarkerId);
+            selectedMarkerId = null;
+            renderMarkers();
+        }
+    }
+    
+    function updateTransform() {
+        mapContainer.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+    }
+
+    const MIN_SCALE = 0.05;
+    const MAX_SCALE = 10;
+    
+    function setScale(newScale, clientX, clientY) {
+        const oldScale = scale;
+        const newScaleClamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
+        
+        if (newScaleClamped === oldScale) return;
+        
+        if (clientX !== undefined && clientY !== undefined) {
+            // Получаем координаты курсора относительно viewport
+            const viewportRect = viewport.getBoundingClientRect();
+            
+            // Координаты курсора внутри viewport (0-1)
+            const mouseX = (clientX - viewportRect.left) / viewportRect.width;
+            const mouseY = (clientY - viewportRect.top) / viewportRect.height;
+            
+            // Точка под курсором в системе координат карты (без учета масштаба и панорамирования)
+            // mapRect - видимая область карты (с учетом текущего translate и scale)
+            const mapRect = mapContainer.getBoundingClientRect();
+            
+            // Позиция точки под курсором в координатах карты (0-1 по ширине/высоте картинки)
+            const pointX = (clientX - mapRect.left) / mapRect.width;
+            const pointY = (clientY - mapRect.top) / mapRect.height;
+            
+            // Меняем масштаб
+            scale = newScaleClamped;
+            
+            // Обновляем трансформацию
+            updateTransform();
+            
+            // Получаем новую позицию этой же точки
+            const newMapRect = mapContainer.getBoundingClientRect();
+            const newPointX = (clientX - newMapRect.left) / newMapRect.width;
+            const newPointY = (clientY - newMapRect.top) / newMapRect.height;
+            
+            // Корректируем translate, чтобы точка под курсором осталась на месте
+            const deltaX = (newPointX - pointX) * newMapRect.width;
+            const deltaY = (newPointY - pointY) * newMapRect.height;
+            
+            translateX -= deltaX;
+            translateY -= deltaY;
+        } else {
+            scale = newScaleClamped;
+        }
+        
+        updateTransform();
+    }
+    
+    function startPan(e) {
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        panStartTranslateX = translateX;
+        panStartTranslateY = translateY;
+        viewport.style.cursor = 'grabbing';
+    }
+    
+    function onPan(e) {
+        if (!isPanning) return;
+        const dx = e.clientX - panStartX;
+        const dy = e.clientY - panStartY;
+        translateX = panStartTranslateX + dx;
+        translateY = panStartTranslateY + dy;
+        updateTransform();
+    }
+    
+    function endPan() {
+        isPanning = false;
+        viewport.style.cursor = 'grab';
+    }
+    
+    viewport.addEventListener('mousedown', (e) => {
+        if (e.target === viewport || e.target === mapImage || e.target.closest('.map-container')) {
+            if (!e.target.closest('.marker')) {
+                startPan(e);
+                e.preventDefault();
+            }
+        }
+    });
+    window.addEventListener('mousemove', onPan);
+    window.addEventListener('mouseup', endPan);
+    
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const newScale = scale * delta;
+        setScale(newScale, e.clientX, e.clientY);
+    });
+    
+    zoomIn.addEventListener('click', () => setScale(scale * 1.2, viewport.clientWidth/2, viewport.clientHeight/2));
+    zoomOut.addEventListener('click', () => setScale(scale * 0.8, viewport.clientWidth/2, viewport.clientHeight/2));
+    resetZoom.addEventListener('click', () => {
+        fitMapToView();
+    });
+    
+    // Helper для rounded rectangle
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+        CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+            if (w < 2 * r) r = w / 2;
+            if (h < 2 * r) r = h / 2;
+            this.moveTo(x+r, y);
+            this.lineTo(x+w-r, y);
+            this.quadraticCurveTo(x+w, y, x+w, y+r);
+            this.lineTo(x+w, y+h-r);
+            this.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+            this.lineTo(x+r, y+h);
+            this.quadraticCurveTo(x, y+h, x, y+h-r);
+            this.lineTo(x, y+r);
+            this.quadraticCurveTo(x, y, x+r, y);
+            return this;
+        };
+    }
+
+    async function exportImage() {
+        if (!mapImage.complete || mapImage.naturalWidth === 0) {
+            alert('Изображение не загружено');
+            return null;
+        }
+
+        const originalWidth = mapImage.naturalWidth;
+        const originalHeight = mapImage.naturalHeight;
+
+        // сохраняем стили
+        const oldTransform = mapContainer.style.transform;
+        const oldTransition = mapContainer.style.transition;
+        const oldWidth = mapContainer.style.width;
+        const oldHeight = mapContainer.style.height;
+
+        // убираем zoom/pan
+        mapContainer.style.transition = 'none';
+        mapContainer.style.transform = 'none';
+
+        // выставляем реальный размер карты
+        mapContainer.style.width = originalWidth + 'px';
+        mapContainer.style.height = originalHeight + 'px';
+
+        mapImage.style.width = originalWidth + 'px';
+        mapImage.style.height = originalHeight + 'px';
+
+        await new Promise(r => requestAnimationFrame(r));
+
+        const canvas = await html2canvas(mapContainer, {
+            useCORS: true,
+            backgroundColor: null,
+            width: originalWidth,
+            height: originalHeight,
+            scale: 2
+        });
+
+        // возвращаем обратно
+        mapContainer.style.transform = oldTransform;
+        mapContainer.style.transition = oldTransition;
+        mapContainer.style.width = oldWidth;
+        mapContainer.style.height = oldHeight;
+
+        mapImage.style.width = '';
+        mapImage.style.height = '';
+
+        return canvas;
+    }
+    
+    copyBtn.addEventListener('click', async () => {
+        const canvas = await exportImage();
+        if (!canvas) { alert('Ошибка экспорта'); return; }
+        canvas.toBlob(async (blob) => {
+            try {
+                await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                alert('✅ Скопировано в буфер!');
+            } catch { alert('❌ Ошибка копирования'); }
+        });
+    });
+    
+    downloadBtn.addEventListener('click', async () => {
+        const canvas = await exportImage();
+        if (!canvas) return;
+        const link = document.createElement('a');
+        link.download = `map_${Date.now()}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+    });
+    
+    document.querySelectorAll('.icon-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.icon-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentIcon = btn.getAttribute('data-icon');
+        });
+    });
+    
+    markerTextInput.addEventListener('input', (e) => currentText = e.target.value);
+    addBtn.addEventListener('click', addMarkerAtCenter);
+    clearBtn.addEventListener('click', () => {
+        if (confirm('Удалить все метки?')) { markers = []; selectedMarkerId = null; renderMarkers(); }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Delete' || e.key === 'Del') deleteSelected();
+    });
+    
+    uploadInput.addEventListener('change', (e) => {
+        if (e.target.files[0]) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const url = ev.target.result;
+                const newId = nextCustomId++;
+                customMaps.push({
+                    id: newId,
+                    name: file.name.split('.')[0].slice(0, 15),
+                    url: url,
+                    thumb: url
+                });
+                buildCarousel();
+                setCurrentMap(url, newId);
+            };
+            reader.readAsDataURL(file);
+        }
+        uploadInput.value = '';
+    });
+    
+    document.getElementById('uploadLabel').addEventListener('click', () => uploadInput.click());
+    
+    mapImage.onload = () => {
+        renderMarkers();
+        fitMapToView();
+    };
+    
+    window.addEventListener('resize', () => {
+        if (mapImage.complete) fitMapToView();
+    });
+    
+    scanLocalMaps();
+    viewport.style.cursor = 'grab';
+    
+    document.querySelector('.icon-btn').classList.add('active');
+    updateIconSizeDisplay();
+    updateTextSizeDisplay();
+</script>
+</body>
+</html>
