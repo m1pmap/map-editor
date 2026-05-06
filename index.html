@@ -922,27 +922,31 @@
     });
     
     uploadInput.addEventListener('change', (e) => {
-        if (e.target.files[0]) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const url = ev.target.result;
-                const newId = nextCustomId++;
-                customMaps.push({
-                    id: newId,
-                    name: file.name.split('.')[0].slice(0, 15),
-                    url: url,
-                    thumb: url
-                });
-                buildCarousel();
-                setCurrentMap(url, newId);
-            };
-            reader.readAsDataURL(file);
-        }
+        const file = e.target.files[0];
+
+        if (!file) return;
+
+        const reader = new FileReader();
+
+        reader.onload = (ev) => {
+            const url = ev.target.result;
+
+            // Просто открываем карту
+            currentMapUrl = url;
+            currentMapId = null;
+
+            mapImage.src = url;
+
+            markers = [];
+            selectedMarkerId = null;
+
+            renderMarkers();
+        };
+
+        reader.readAsDataURL(file);
+
         uploadInput.value = '';
     });
-    
-    document.getElementById('uploadLabel').addEventListener('click', () => uploadInput.click());
     
     mapImage.onload = () => {
         renderMarkers();
